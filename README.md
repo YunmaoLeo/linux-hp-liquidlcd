@@ -61,6 +61,7 @@ Images are resized to 480×480. `contain` adds black bars when needed;
 
 ```bash
 hp-omen-lcd handshake
+hp-omen-lcd off
 hp-omen-lcd image photo.png
 hp-omen-lcd image photo.jpg --fit cover --rotate 90
 ```
@@ -100,6 +101,7 @@ sudo udevadm trigger --subsystem-match=hidraw
 sudo udevadm trigger --subsystem-match=usb
 
 hp-omen-lcd image 图片.png --fit contain
+hp-omen-lcd off
 ```
 
 ## Protocol notes
@@ -110,6 +112,10 @@ The vendor-defined HID interface exposes two relevant report IDs:
 - report 2 is 1024 bytes;
 - wire command `0x6e` transfers a JPEG in 1013-byte payload chunks following an
   11-byte header.
+
+The `off` command follows HP's own `Apply_Black_Image` path and uploads a
+480×480 black JPEG. This model does not expose a separate reliable backlight-off
+command.
 
 HP's native `CWitmodHid_SynchronizeImage` waits for each host USB write to
 complete but does not wait for a device-side `0x6e` acknowledgement.

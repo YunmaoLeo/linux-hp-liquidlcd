@@ -5,6 +5,10 @@ import omen_lcd
 
 
 class PacketTests(unittest.TestCase):
+    def test_off_is_available_as_a_command(self):
+        args = omen_lcd.create_parser().parse_args(["off"])
+        self.assertEqual(args.command, "off")
+
     def test_handshake_uses_mapped_wire_command(self):
         self.assertEqual(omen_lcd.CMD_HANDSHAKE, 0x41)
 

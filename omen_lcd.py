@@ -319,6 +319,20 @@ def prepare_jpeg(source: Path, fit: str, rotate: int) -> bytes:
         raise OmenLcdError(f"cannot prepare image {source}: {exc}") from exc
 
 
+def prepare_black_jpeg() -> bytes:
+    """Build the black frame used by HP's Apply_Black_Image off path."""
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise OmenLcdError("off requires Pillow: sudo apt install python3-pil") from exc
+    with tempfile.SpooledTemporaryFile(max_size=256 * 1024) as output:
+        Image.new("RGB", (480, 480), "black").save(
+            output, "JPEG", quality=100, subsampling=0
+        )
+        output.seek(0)
+        return output.read()
+
+
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Control an HP OMEN 480x480 LCD pump cap")
     parser.add_argument("--device", help="hidraw data interface (normally auto-detected)")
@@ -330,6 +344,7 @@ def create_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("probe", help="detect the LCD without writing to it")
     sub.add_parser("handshake", help="send HP's low-risk keepalive command")
+    sub.add_parser("off", help="display the HP-compatible black off frame")
     image = sub.add_parser("image", help="display a still image")
     image.add_argument("path", type=Path)
     image.add_argument("--fit", choices=("contain", "cover"), default="contain")
@@ -356,6 +371,9 @@ def main(argv: list[str] | None = None) -> int:
             lcd.handshake()
             if args.command == "handshake":
                 print(f"Handshake sent to {device}")
+            elif args.command == "off":
+                lcd.upload_jpeg(prepare_black_jpeg(), progress=False)
+                print("LCD off frame displayed")
             elif args.command == "image":
                 jpeg = prepare_jpeg(args.path, args.fit, args.rotate)
                 lcd.upload_jpeg(jpeg)
