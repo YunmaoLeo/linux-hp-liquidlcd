@@ -11,12 +11,9 @@ import argparse
 import os
 from pathlib import Path
 import select
-import shutil
-import subprocess
 import sys
 import tempfile
 import time
-from typing import BinaryIO, Iterator
 
 
 HP_VID = 0x03F0
@@ -346,143 +343,6 @@ def prepare_jpeg(source: Path, fit: str, rotate: int) -> bytes:
         raise OmenLcdError(f"cannot prepare image {source}: {exc}") from exc
 
 
-def iter_mjpeg_frames(stream: BinaryIO, chunk_size: int = 64 * 1024) -> Iterator[bytes]:
-    """Split an MJPEG byte stream into complete JPEG images."""
-    buffer = bytearray()
-    while True:
-        chunk = stream.read(chunk_size)
-        if chunk:
-            buffer.extend(chunk)
-        while True:
-            start = buffer.find(b"\xff\xd8")
-            if start < 0:
-                if len(buffer) > 1:
-                    del buffer[:-1]
-                break
-            end = buffer.find(b"\xff\xd9", start + 2)
-            if end < 0:
-                if start:
-                    del buffer[:start]
-                break
-            end += 2
-            yield bytes(buffer[start:end])
-            del buffer[:end]
-        if not chunk:
-            break
-
-
-def _video_filter(fit: str, rotate: int, fps: float) -> str:
-    filters: list[str] = []
-    if rotate == 90:
-        filters.append("transpose=clock")
-    elif rotate == 180:
-        filters.extend(("hflip", "vflip"))
-    elif rotate == 270:
-        filters.append("transpose=cclock")
-    if fit == "cover":
-        filters.extend((
-            "scale=480:480:force_original_aspect_ratio=increase",
-            "crop=480:480",
-        ))
-    else:
-        filters.extend((
-            "scale=480:480:force_original_aspect_ratio=decrease",
-            "pad=480:480:(ow-iw)/2:(oh-ih)/2:black",
-        ))
-    filters.append(f"fps={fps:g}")
-    return ",".join(filters)
-
-
-def ffmpeg_frames(
-    source: Path,
-    *,
-    fit: str = "contain",
-    rotate: int = 0,
-    fps: float = 10.0,
-    quality: int = 85,
-    loop: bool = False,
-) -> Iterator[bytes]:
-    """Decode a video or animation into 480x480 JPEG frames using ffmpeg."""
-    executable = shutil.which("ffmpeg")
-    if executable is None:
-        raise OmenLcdError("video playback requires ffmpeg: sudo apt install ffmpeg")
-    if not source.is_file():
-        raise OmenLcdError(f"media file not found: {source}")
-    if not 0 < fps <= 30:
-        raise ValueError("fps must be greater than 0 and no more than 30")
-    if not 1 <= quality <= 100:
-        raise ValueError("quality must be between 1 and 100")
-
-    # ffmpeg's MJPEG qscale runs from 2 (best) to 31 (smallest).
-    qscale = max(2, min(31, round(31 - quality * 29 / 100)))
-    command = [executable, "-hide_banner", "-loglevel", "error", "-nostdin"]
-    if loop:
-        command.extend(("-stream_loop", "-1"))
-    command.extend((
-        "-i", str(source), "-an", "-vf", _video_filter(fit, rotate, fps),
-        "-c:v", "mjpeg", "-q:v", str(qscale), "-f", "image2pipe", "pipe:1",
-    ))
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    completed = False
-    try:
-        assert process.stdout is not None
-        yield from iter_mjpeg_frames(process.stdout)
-        completed = True
-    finally:
-        if process.poll() is None:
-            if completed:
-                process.wait()
-            else:
-                process.terminate()
-                try:
-                    process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-        assert process.stderr is not None
-        error = process.stderr.read().decode("utf-8", errors="replace").strip()
-        if completed and process.returncode:
-            raise OmenLcdError(f"ffmpeg failed: {error or f'exit status {process.returncode}'}")
-
-
-def play_video(
-    lcd: OmenLcd,
-    source: Path,
-    *,
-    fit: str = "contain",
-    rotate: int = 0,
-    fps: float = 10.0,
-    quality: int = 85,
-    loop: bool = False,
-    duration: float | None = None,
-) -> int:
-    """Play media on an open LCD and return the number of displayed frames."""
-    if duration is not None and duration <= 0:
-        raise ValueError("duration must be greater than 0")
-    started = time.monotonic()
-    count = 0
-    frames = ffmpeg_frames(
-        source, fit=fit, rotate=rotate, fps=fps, quality=quality, loop=loop
-    )
-    try:
-        for frame in frames:
-            if duration is not None and time.monotonic() - started >= duration:
-                break
-            target = started + count / fps
-            delay = target - time.monotonic()
-            if delay > 0:
-                time.sleep(delay)
-            lcd.upload_jpeg(frame, progress=False)
-            count += 1
-            print(f"\rPlaying: {count} frames", end="", flush=True)
-    finally:
-        frames.close()
-    if count == 0:
-        raise OmenLcdError("ffmpeg produced no video frames")
-    print()
-    return count
-
-
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Control an HP OMEN 480x480 LCD pump cap")
     parser.add_argument("--device", help="hidraw data interface (normally auto-detected)")
@@ -504,15 +364,6 @@ def create_parser() -> argparse.ArgumentParser:
     image.add_argument("--fit", choices=("contain", "cover"), default="contain")
     image.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=0)
     image.add_argument("--brightness", type=int, default=100, metavar="11..100")
-    video = sub.add_parser("video", help="play a video or animated image using ffmpeg")
-    video.add_argument("path", type=Path)
-    video.add_argument("--fit", choices=("contain", "cover"), default="contain")
-    video.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=0)
-    video.add_argument("--brightness", type=int, default=100, metavar="11..100")
-    video.add_argument("--fps", type=float, default=10.0, metavar="FPS")
-    video.add_argument("--quality", type=int, default=85, metavar="1..100")
-    video.add_argument("--loop", action="store_true", help="repeat until interrupted")
-    video.add_argument("--duration", type=float, metavar="SECONDS")
     return parser
 
 
@@ -554,16 +405,6 @@ def main(argv: list[str] | None = None) -> int:
                 lcd.upload_jpeg(jpeg)
                 lcd.set_brightness(args.brightness)
                 print(f"Image displayed at {args.brightness}% brightness")
-            elif args.command == "video":
-                if not 11 <= args.brightness <= 100:
-                    raise ValueError("brightness must be between 11 and 100")
-                lcd.set_brightness(args.brightness)
-                count = play_video(
-                    lcd, args.path, fit=args.fit, rotate=args.rotate,
-                    fps=args.fps, quality=args.quality, loop=args.loop,
-                    duration=args.duration,
-                )
-                print(f"Video stopped after {count} frames")
         return 0
     except KeyboardInterrupt:
         print("\nPlayback stopped", file=sys.stderr)

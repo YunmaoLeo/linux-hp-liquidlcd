@@ -1,4 +1,3 @@
-from io import BytesIO
 from pathlib import Path
 import unittest
 
@@ -44,24 +43,6 @@ class PacketTests(unittest.TestCase):
         data = b"x" * (omen_lcd.IMAGE_PAYLOAD_SIZE + 1)
         lcd.upload_jpeg(data, progress=False)
         self.assertEqual(len(lcd.writes), 2)
-
-    def test_mjpeg_stream_is_split_across_arbitrary_chunks(self):
-        first = b"\xff\xd8first\xff\xd9"
-        second = b"\xff\xd8second\xff\xd9"
-
-        frames = list(omen_lcd.iter_mjpeg_frames(
-            BytesIO(b"noise" + first + second), chunk_size=3
-        ))
-
-        self.assertEqual(frames, [first, second])
-
-    def test_video_filter_covers_fit_rotation_and_fps(self):
-        result = omen_lcd._video_filter("cover", 90, 12.5)
-        self.assertEqual(
-            result,
-            "transpose=clock,scale=480:480:force_original_aspect_ratio=increase,"
-            "crop=480:480,fps=12.5",
-        )
 
 
 if __name__ == "__main__":
