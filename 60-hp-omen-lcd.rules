@@ -1,0 +1,5 @@
+# HP OMEN LCD-PUMP vendor-defined HID interface.
+# uaccess grants the active local desktop user access without making it world-writable.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="03f0", ATTRS{idProduct}=="7397", TAG+="uaccess", MODE="0660"
+# Optional direct-libusb transport. Access is limited to the active local seat.
+SUBSYSTEM=="usb", ATTR{idVendor}=="03f0", ATTR{idProduct}=="7397", TAG+="uaccess", MODE="0660"

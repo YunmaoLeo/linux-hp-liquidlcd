@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "linux-hp-liquidlcd"
+version = "0.1.0"
+description = "Linux control and media playback for the HP OMEN 45L LCD pump cap"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "linux-hp-liquidlcd contributors"}]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Hardware :: Hardware Drivers",
+]
+dependencies = ["Pillow>=9"]
+
+[project.optional-dependencies]
+usb = ["pyusb>=1.2"]
+dev = ["build>=1", "pyusb>=1.2"]
+
+[project.scripts]
+hp-omen-lcd = "omen_lcd:main"
+
+[project.urls]
+Repository = "https://github.com/YunmaoLeo/linux-hp-liquidlcd"
+Issues = "https://github.com/YunmaoLeo/linux-hp-liquidlcd/issues"
+
+[tool.setuptools]
+py-modules = ["omen_lcd"]
