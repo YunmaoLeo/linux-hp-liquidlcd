@@ -5,12 +5,6 @@ import omen_lcd
 
 
 class PacketTests(unittest.TestCase):
-    def test_config_packet_matches_hp_sdk_layout(self):
-        report = omen_lcd.build_config_report(75)
-        self.assertEqual(len(report), 1024)
-        self.assertEqual(report[:14], bytes([2, 0x6C, 0, 0, 0, 1, 0, 0, 1, 0, 8, 4, 75, 0]))
-        self.assertEqual(report[18], 25)
-
     def test_handshake_uses_mapped_wire_command(self):
         self.assertEqual(omen_lcd.CMD_HANDSHAKE, 0x41)
 

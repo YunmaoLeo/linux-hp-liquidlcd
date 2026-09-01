@@ -6,7 +6,6 @@ desktops. The tested USB device is `03f0:7397` (`HP LCD-PUMP`).
 Features:
 
 - display JPEG, PNG and other still images;
-- control brightness and turn the backlight on or off;
 - use Linux `hidraw` or direct `libusb` transport;
 - use either the `hp-omen-lcd` command or a Python API.
 
@@ -63,11 +62,7 @@ Images are resized to 480×480. `contain` adds black bars when needed;
 ```bash
 hp-omen-lcd handshake
 hp-omen-lcd image photo.png
-hp-omen-lcd image photo.jpg --fit cover --rotate 90 --brightness 80
-
-hp-omen-lcd off
-hp-omen-lcd on --brightness 80
-hp-omen-lcd brightness 50
+hp-omen-lcd image photo.jpg --fit cover --rotate 90
 ```
 
 The default `hidraw` transport leaves the kernel driver attached. If it does
@@ -89,7 +84,6 @@ from omen_lcd import open_lcd, prepare_jpeg
 with open_lcd() as lcd:
     lcd.handshake()
     lcd.upload_jpeg(prepare_jpeg(Path("photo.png"), "contain", 0))
-    lcd.set_brightness(80)
 ```
 
 ## 中文快速开始
@@ -106,7 +100,6 @@ sudo udevadm trigger --subsystem-match=hidraw
 sudo udevadm trigger --subsystem-match=usb
 
 hp-omen-lcd image 图片.png --fit contain
-hp-omen-lcd on --brightness 80
 ```
 
 ## Protocol notes
@@ -115,7 +108,6 @@ The vendor-defined HID interface exposes two relevant report IDs:
 
 - report 1 is 64 bytes and carries wire command `0x41` for the handshake;
 - report 2 is 1024 bytes;
-- wire command `0x6c` configures brightness;
 - wire command `0x6e` transfers a JPEG in 1013-byte payload chunks following an
   11-byte header.
 

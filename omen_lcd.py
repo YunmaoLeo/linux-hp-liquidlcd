@@ -23,7 +23,6 @@ REPORT_DATA = 0x02
 # HP's managed helper builds logical command 0x0f, but CWitmodHid_HidWriteBuff
 # maps logical commands 0x0d..0x1e to wire commands 0x6a..0x7b.
 CMD_HANDSHAKE = 0x41
-CMD_CONFIG = 0x6C
 CMD_SYNC_IMAGE = 0x6E
 CONTROL_REPORT_SIZE = 64
 DATA_REPORT_SIZE = 1024
@@ -157,9 +156,6 @@ class OmenLcd:
         # its handshake timer and waits before starting a 1024-byte transfer.
         self._drain_input(0.3)
 
-    def set_brightness(self, percent: int) -> None:
-        self._write(build_config_report(percent))
-
     def upload_jpeg(self, jpeg: bytes, progress: bool = True) -> None:
         reports = build_image_reports(jpeg)
         for index, report in enumerate(reports, 1):
@@ -278,26 +274,6 @@ def open_lcd(
     raise ValueError("transport must be 'hidraw' or 'usb'")
 
 
-def build_config_report(brightness: int, rotation: int = 0, fps: int = 25) -> bytes:
-    if not 0 <= brightness <= 100:
-        raise ValueError("brightness must be between 0 and 100")
-    if not 0 <= rotation <= 3:
-        raise ValueError("rotation code must be between 0 and 3")
-    if not 0 <= fps <= 255:
-        raise ValueError("fps must fit in one byte")
-    report = bytearray(DATA_REPORT_SIZE)
-    report[0] = REPORT_DATA
-    report[1] = CMD_CONFIG
-    report[2:6] = (1).to_bytes(4, "big")
-    report[6:9] = (1).to_bytes(3, "big")
-    report[10] = 8
-    report[11] = 4  # HP SDK's display configuration selector
-    report[12] = brightness
-    report[13] = rotation
-    report[18] = fps
-    return bytes(report)
-
-
 def build_image_reports(jpeg: bytes) -> list[bytes]:
     if not jpeg:
         raise ValueError("image data is empty")
@@ -354,16 +330,10 @@ def create_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("probe", help="detect the LCD without writing to it")
     sub.add_parser("handshake", help="send HP's low-risk keepalive command")
-    brightness = sub.add_parser("brightness", help="set LCD backlight brightness")
-    brightness.add_argument("percent", type=int, metavar="0..100")
-    on = sub.add_parser("on", help="turn the LCD backlight on")
-    on.add_argument("--brightness", type=int, default=100, metavar="11..100")
-    sub.add_parser("off", help="turn the LCD backlight off")
     image = sub.add_parser("image", help="display a still image")
     image.add_argument("path", type=Path)
     image.add_argument("--fit", choices=("contain", "cover"), default="contain")
     image.add_argument("--rotate", type=int, choices=(0, 90, 180, 270), default=0)
-    image.add_argument("--brightness", type=int, default=100, metavar="11..100")
     return parser
 
 
@@ -386,25 +356,10 @@ def main(argv: list[str] | None = None) -> int:
             lcd.handshake()
             if args.command == "handshake":
                 print(f"Handshake sent to {device}")
-            elif args.command == "brightness":
-                value = 0 if 0 < args.percent <= 10 else args.percent
-                lcd.set_brightness(value)
-                print(f"Brightness set to {value}%")
-            elif args.command == "on":
-                if not 11 <= args.brightness <= 100:
-                    raise ValueError("brightness must be between 11 and 100")
-                lcd.set_brightness(args.brightness)
-                print(f"LCD backlight on at {args.brightness}%")
-            elif args.command == "off":
-                lcd.set_brightness(0)
-                print("LCD backlight off")
             elif args.command == "image":
-                if not 11 <= args.brightness <= 100:
-                    raise ValueError("brightness must be between 11 and 100")
                 jpeg = prepare_jpeg(args.path, args.fit, args.rotate)
                 lcd.upload_jpeg(jpeg)
-                lcd.set_brightness(args.brightness)
-                print(f"Image displayed at {args.brightness}% brightness")
+                print("Image displayed")
         return 0
     except KeyboardInterrupt:
         print("\nPlayback stopped", file=sys.stderr)
